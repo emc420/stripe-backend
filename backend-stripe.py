@@ -52,23 +52,30 @@ def getProducts():
 def createStripesession():
     response = {}
     data = request.json
-    suc_url = data.get("successUrl")
-    can_url = data.get("cancelUrl")
-    payment_method = data.get("payment_method_types")
-    line_itmes_array = data.get("lineItems")
-    modes = data.get("mode")
-    sessionJson = stripe.checkout.Session.create(
+    authHeader = request.headers.get('Authorization')
+    auth_token = authHeader[7:]
+    user_id = decode_auth_token(auth_token)
+    if user_id=="IT":
+        response["status"] = 404
+        response["session_id"] = None
+    else:
+        suc_url = data.get("successUrl")
+        can_url = data.get("cancelUrl")
+        payment_method = data.get("payment_method_types")
+        line_itmes_array = data.get("lineItems")
+        modes = data.get("mode")
+        sessionJson = stripe.checkout.Session.create(
                 success_url=suc_url,
                 cancel_url=can_url,
                 payment_method_types=payment_method,
                 line_items=line_itmes_array,
                 mode=modes
                 )
-    response["status"] = 200
-    response["session_id"] = sessionJson["id"]
-    new_db_entry = SessionInfo(userid="userid1", sessionid = sessionJson["id"], status="unpaid")
-    db.session.add(new_db_entry)
-    db.session.commit()
+        response["status"] = 200
+        response["session_id"] = sessionJson["id"]
+        new_db_entry = SessionInfo(userid= user_id, sessionid = sessionJson["id"], status="unpaid")
+        db.session.add(new_db_entry)
+        db.session.commit()
     return response
 
 
@@ -85,17 +92,15 @@ def paymentStatus():
     response["paymentStatus"] = row.status
     return response
 
-@staticmethod
 def decode_auth_token(auth_token):
     try:
-        payload = jwt.decode(auth_token, app.config.get('SECRET_KEY'))
+        key = "3$%^%&^ytfygf(kiiki_564"
+        payload = jwt.decode(auth_token, key)
         return payload['sub']
     except jwt.ExpiredSignatureError:
         return 'Signature expired. Please log in again.'
-    except jwt.InvalidTokenError:
-        return 'Invalid token. Please log in again.'
-
-
+    except jwt.InvalidTokenError as e:
+        print(e)
 
 
 if __name__ == '__main__':
