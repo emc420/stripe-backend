@@ -3,6 +3,7 @@ import stripe
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 import jwt
+import json
 
 
 app = Flask(__name__)
@@ -92,6 +93,32 @@ def paymentStatus():
     response["paymentStatus"] = row.status
     return response
 
+
+@app.route("/webhook", methods=['POST'])
+def updatePayment():
+    response = {}
+    payload = request.json
+    event = None
+
+    try:
+        event = stripe.Event.construct_from(
+                json.loads(payload), stripe.api_key
+                )
+    except ValueError as e:
+        response["status"] = 400
+        response["message"] = "Invalid Payload"
+        return response
+    if event.type == 'checkout.session.completed':
+        session = event.data.object
+        handle_payments(session)
+    else:
+        response["status"] = 400
+        response["message"]= "Unexpected Event Type"
+        return response
+    response["message"] = "Sucessfull event"
+    response["status"] = 200  
+    return response
+
 def decode_auth_token(auth_token):
     try:
         key = "3$%^%&^ytfygf(kiiki_564"
@@ -100,7 +127,11 @@ def decode_auth_token(auth_token):
     except jwt.ExpiredSignatureError:
         return 'Signature expired. Please log in again.'
     except jwt.InvalidTokenError as e:
-        print(e)
+        return "IT"
+
+def handle_payments(session):
+    row = SessionInfo.query.filter_by(sessionid=session.id).first()
+    row.status = "paid"
 
 
 if __name__ == '__main__':
