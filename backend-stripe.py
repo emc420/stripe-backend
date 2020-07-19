@@ -5,13 +5,21 @@ from flask_migrate import Migrate
 import jwt
 import json
 
+from flask_wtf.csrf import CsrfProtect
+csrf = CsrfProtect()
+import os
+SECRET_KEY = os.urandom(32)
+
 
 app = Flask(__name__)
+#app.config['SECRET_KEY'] = SECRET_KEY
+#csrf.init_app(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://postgres:biswa1234@localhost:5432/Stripe_Integration"
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
 stripe.api_key = "sk_test_N0iJfSR0GpyOvKBsbSUJbf7H00bpuDCPUD"
+#stripe.api_key = "sk_test_51H4tmnC9Y8pTmB7V2vVrWAeGsI1uAMcuCld1wj0ko1m50vQNmwlVKzRJvKoe1nIijSLfyeDFqa5iJ9alpkn5JX1b005iBtDIgE"
 
 
 class SessionInfo(db.Model):
@@ -94,12 +102,12 @@ def paymentStatus():
     return response
 
 
-@app.route("/webhook", methods=['POST'])
+'''@app.route("/webhook", methods=['POST'])
 def updatePayment():
     response = {}
     payload = request.json
     event = None
-
+    print(payload)
     try:
         event = stripe.Event.construct_from(
                 json.loads(payload), stripe.api_key
@@ -118,6 +126,36 @@ def updatePayment():
     response["message"] = "Sucessfull event"
     response["status"] = 200  
     return response
+'''
+@app.route("/webhook", methods=['POST'])
+def updatePayment():
+    response = {}
+    payload = request.get_data()
+    endpoint_secret = "whsec_k8ohX8n86DfGooYIyngf9sFHxbGwxKM7"
+    sig_header = request.headers['Stripe-Signature']
+    event = None
+    try:
+        event = stripe.Webhook.construct_event(
+                payload, sig_header, endpoint_secret
+                )
+        if event['type'] == 'checkout.session.completed':
+            session = event['data']['object']
+            print(session["id"])
+            handle_payments(session["id"])
+    except ValueError as e:
+        response["status"] = 400
+        response["message"] = "Invalid Payload"
+        return response
+    except stripe.error.SignatureVerificationError as e:
+        print(e)
+        response["status"] = 400
+        response["message"] = "Invalid signature" 
+        return response
+    response["message"] = "Sucessfull event"
+    response["status"] = 200
+    return response
+
+
 
 def decode_auth_token(auth_token):
     try:
@@ -130,8 +168,11 @@ def decode_auth_token(auth_token):
         return "IT"
 
 def handle_payments(session):
-    row = SessionInfo.query.filter_by(sessionid=session.id).first()
-    row.status = "paid"
+    try:
+        row = SessionInfo.query.filter_by(sessionid=session).first()
+        row.status = "paid"
+    except Exception as e:
+        print(e)
 
 
 if __name__ == '__main__':
